@@ -58,6 +58,7 @@ class YouTubePredictor:
         self.vectorizers = {}
         self.feature_columns = []
         self.stats = {}
+        self.use_simple_model = False
         
     def load_data(self, file_path):
         """Load and initial preprocessing of YouTube data from CSV or JSON."""
@@ -112,12 +113,26 @@ class YouTubePredictor:
         
         print(f"   Loaded {len(df)} videos")
         
-        # Basic data cleaning
-        df = df.dropna(subset=['title', 'view_count', 'like_count'])
-        df = df[df['view_count'] > 0]  # Remove videos with 0 views
-        df = df[df['like_count'] >= 0]  # Remove invalid like counts
+        # For training data, we need view_count and like_count
+        # For prediction data, these columns might not exist
+        required_columns = ['title']
+        missing_required = [col for col in required_columns if col not in df.columns]
         
-        print(f"   After cleaning: {len(df)} videos")
+        if missing_required:
+            raise ValueError(f"Missing required columns: {missing_required}")
+        
+        # Basic data cleaning (only if we have the columns)
+        if 'view_count' in df.columns and 'like_count' in df.columns:
+            # Training mode - clean the target variables
+            df = df.dropna(subset=['title', 'view_count', 'like_count'])
+            df = df[df['view_count'] > 0]  # Remove videos with 0 views
+            df = df[df['like_count'] >= 0]  # Remove invalid like counts
+            print(f"   After cleaning: {len(df)} videos")
+        else:
+            # Prediction mode - just clean the title
+            df = df.dropna(subset=['title'])
+            print(f"   Ready for prediction: {len(df)} videos")
+        
         return df
     
     def extract_features(self, df):
@@ -166,8 +181,12 @@ class YouTubePredictor:
         features_df['tags_clean'] = features_df['tags'].fillna('').astype(str)
         features_df['tags_count'] = features_df['tags_clean'].str.split(',').str.len()
         
-        # 8. Engagement ratio (target leakage prevention - only for analysis)
-        features_df['like_view_ratio'] = features_df['like_count'] / (features_df['view_count'] + 1)
+        # 8. Engagement ratio (only calculate if we have the data - not for predictions!)
+        if 'view_count' in features_df.columns and 'like_count' in features_df.columns:
+            features_df['like_view_ratio'] = features_df['like_count'] / (features_df['view_count'] + 1)
+        else:
+            # For predictions, we don't have these values yet
+            features_df['like_view_ratio'] = 0.0  # Neutral default
         
         return features_df
     
@@ -242,36 +261,44 @@ class YouTubePredictor:
         print(f"   Feature shape: {all_features.shape}")
         return all_features
     
-    def build_model(self, input_dim):
+    def build_model(self, input_dim, simple=False):
         """Build the neural network model."""
         print("🧠 Building neural network...")
         
         # Input layer
         inputs = keras.Input(shape=(input_dim,))
         
-        # Feature extraction layers
-        x = layers.Dense(512, activation='relu')(inputs)
-        x = layers.BatchNormalization()(x)
-        x = layers.Dropout(0.3)(x)
-        
-        x = layers.Dense(256, activation='relu')(x)
-        x = layers.BatchNormalization()(x)
-        x = layers.Dropout(0.3)(x)
-        
-        x = layers.Dense(128, activation='relu')(x)
-        x = layers.BatchNormalization()(x)
-        x = layers.Dropout(0.2)(x)
-        
-        x = layers.Dense(64, activation='relu')(x)
-        x = layers.Dropout(0.2)(x)
+        if simple:
+            # Simplified model for small datasets
+            print("   Using simplified architecture for small dataset")
+            x = layers.Dense(32, activation='relu')(inputs)
+            x = layers.Dropout(0.2)(x)
+            x = layers.Dense(16, activation='relu')(x)
+            x = layers.Dropout(0.2)(x)
+        else:
+            # Full model for large datasets
+            x = layers.Dense(512, activation='relu')(inputs)
+            x = layers.BatchNormalization()(x)
+            x = layers.Dropout(0.3)(x)
+            
+            x = layers.Dense(256, activation='relu')(x)
+            x = layers.BatchNormalization()(x)
+            x = layers.Dropout(0.3)(x)
+            
+            x = layers.Dense(128, activation='relu')(x)
+            x = layers.BatchNormalization()(x)
+            x = layers.Dropout(0.2)(x)
+            
+            x = layers.Dense(64, activation='relu')(x)
+            x = layers.Dropout(0.2)(x)
         
         # Output branches
         # View count prediction (log scale)
-        view_branch = layers.Dense(32, activation='relu', name='view_branch')(x)
+        view_branch = layers.Dense(16 if simple else 32, activation='relu', name='view_branch')(x)
         view_output = layers.Dense(1, activation='linear', name='view_count')(view_branch)
         
         # Like count prediction (log scale)
-        like_branch = layers.Dense(32, activation='relu', name='like_branch')(x)
+        like_branch = layers.Dense(16 if simple else 32, activation='relu', name='like_branch')(x)
         like_output = layers.Dense(1, activation='linear', name='like_count')(like_branch)
         
         # Create model
@@ -292,7 +319,10 @@ class YouTubePredictor:
                 'view_count': 1.0,
                 'like_count': 0.5  # Like count is generally harder to predict
             },
-            metrics=['mae']
+            metrics={
+                'view_count': ['mae'],
+                'like_count': ['mae']
+            }
         )
         
         return model
@@ -305,10 +335,34 @@ class YouTubePredictor:
         df = self.load_data(data_path)
         df = self.extract_features(df)
         
+        # Check if we have enough data
+        min_samples = 100
+        if len(df) < min_samples:
+            print(f"\n⚠️  WARNING: Only {len(df)} samples found!")
+            print(f"   Minimum recommended: {min_samples} samples")
+            print(f"   For good results: 500+ samples")
+            print(f"\n💡 Solutions:")
+            print(f"   • Scrape more data: python youtube_scraper.py -t 500")
+            print(f"   • Use transfer learning with pre-trained weights")
+            print(f"   • Try a simpler model architecture")
+            
+            if len(df) < 20:
+                print(f"\n❌ Cannot train with < 20 samples. Exiting...")
+                return None
+            
+            # Adjust model architecture for small datasets
+            print(f"\n🔧 Using simplified model for small dataset...")
+            self.use_simple_model = True
+        else:
+            self.use_simple_model = False
+        
         # Prepare features
         X = self.prepare_ml_features(df, is_training=True)
         
         # Prepare targets (log transform for better training)
+        if 'view_count' not in df.columns or 'like_count' not in df.columns:
+            raise ValueError("Training data must include view_count and like_count columns")
+            
         y_views = np.log1p(df['view_count'].values)
         y_likes = np.log1p(df['like_count'].values)
         
@@ -322,6 +376,11 @@ class YouTubePredictor:
         }
         
         # Split data
+        if len(df) < 50:
+            # For very small datasets, use less data for validation
+            validation_split = 0.1
+            batch_size = min(batch_size, len(df) // 3)  # Smaller batch size
+        
         X_train, X_test, y_views_train, y_views_test, y_likes_train, y_likes_test = train_test_split(
             X, y_views, y_likes, test_size=validation_split, random_state=42
         )
@@ -330,16 +389,24 @@ class YouTubePredictor:
         print(f"   Test samples: {len(X_test)}")
         
         # Build model
-        self.model = self.build_model(X.shape[1])
+        self.model = self.build_model(X.shape[1], simple=self.use_simple_model)
         print(f"   Model parameters: {self.model.count_params():,}")
+        
+        # Adjust training parameters for small datasets
+        if len(df) < 50:
+            epochs = min(epochs, 30)  # Fewer epochs for small datasets
+            patience = 5  # Less patience
+            print(f"   Adjusted epochs to {epochs} for small dataset")
+        else:
+            patience = 15
         
         # Callbacks
         early_stopping = callbacks.EarlyStopping(
-            monitor='val_loss', patience=15, restore_best_weights=True
+            monitor='val_loss', patience=patience, restore_best_weights=True
         )
         
         reduce_lr = callbacks.ReduceLROnPlateau(
-            monitor='val_loss', factor=0.7, patience=5, min_lr=1e-6
+            monitor='val_loss', factor=0.7, patience=max(3, patience//3), min_lr=1e-6
         )
         
         # Train model
@@ -378,6 +445,14 @@ class YouTubePredictor:
         print(f"\n📈 Model Performance:")
         print(f"   View Count - MAE: {view_mae:,.0f}, R²: {view_r2:.3f}")
         print(f"   Like Count - MAE: {like_mae:,.0f}, R²: {like_r2:.3f}")
+        
+        # Provide guidance based on dataset size and performance
+        if len(df) < 100:
+            print(f"\n💡 Performance Tips:")
+            print(f"   • Current dataset: {len(df)} videos")
+            print(f"   • For better accuracy, collect 500+ videos")
+            print(f"   • Run: python youtube_scraper.py -t 500")
+            print(f"   • Try diverse search terms for better generalization")
         
         return history
     
@@ -424,8 +499,39 @@ class YouTubePredictor:
     
     def load_model(self, path="models/youtube_predictor"):
         """Load a trained model and preprocessors."""
-        # Load model
-        self.model = keras.models.load_model(f"{path}/model.h5")
+        try:
+            # Load model with custom objects to handle compatibility issues
+            custom_objects = {
+                'mse': 'mean_squared_error',
+                'mae': 'mean_absolute_error'
+            }
+            
+            self.model = keras.models.load_model(
+                f"{path}/model.h5", 
+                custom_objects=custom_objects,
+                compile=False  # Skip compilation to avoid metric issues
+            )
+            
+            # Recompile with current TensorFlow version
+            self.model.compile(
+                optimizer=keras.optimizers.Adam(learning_rate=0.001),
+                loss={
+                    'view_count': 'mse',
+                    'like_count': 'mse'
+                },
+                loss_weights={
+                    'view_count': 1.0,
+                    'like_count': 0.5
+                },
+                metrics={
+                    'view_count': ['mae'],
+                    'like_count': ['mae']
+                }
+            )
+            
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            raise e
         
         # Load preprocessors
         with open(f"{path}/scalers.pkl", 'rb') as f:
@@ -442,7 +548,7 @@ class YouTubePredictor:
         
         print(f"📂 Model loaded from {path}/")
 
-def interactive_prediction():
+def interactive_prediction(model_path="models/youtube_predictor"):
     """Interactive terminal interface for predictions."""
     print("\n🎬 YouTube Video Performance Predictor")
     print("=" * 50)
@@ -450,9 +556,17 @@ def interactive_prediction():
     # Load model
     predictor = YouTubePredictor()
     try:
-        predictor.load_model()
-    except:
-        print("❌ No trained model found! Please train first.")
+        predictor.load_model(model_path)
+    except Exception as e:
+        print(f"❌ No trained model found at {model_path}!")
+        print(f"   Error: {e}")
+        print("\n💡 Solutions:")
+        print("   1. Train a model first:")
+        print("      python3 main.py --train ../data/your_dataset.csv")
+        print("   2. Check the model path:")
+        print(f"      ls {model_path}/")
+        print("   3. Use a different model path:")
+        print("      python3 main.py --predict --model-path ./path/to/model")
         return
     
     print("📝 Enter video details for prediction:")
@@ -486,7 +600,7 @@ def interactive_prediction():
             if not tags:
                 tags = "tutorial,machine learning,AI"
             
-            # Create video data
+            # Create video data (without target variables we're trying to predict!)
             video_data = {
                 'title': title,
                 'description': description,
@@ -495,8 +609,7 @@ def interactive_prediction():
                 'categories': categories,
                 'tags': tags,
                 'upload_date': datetime.now().strftime('%Y%m%d'),
-                'view_count': 1000,  # Placeholder
-                'like_count': 50,    # Placeholder
+                # NOTE: We don't include view_count and like_count since we're predicting them!
             }
             
             # Make prediction
@@ -539,6 +652,7 @@ def main():
     parser = argparse.ArgumentParser(description='YouTube Video Performance Predictor')
     parser.add_argument('--train', help='Path to training data file (.csv or .json)')
     parser.add_argument('--predict', action='store_true', help='Start interactive prediction')
+    parser.add_argument('--model-path', default='models/youtube_predictor', help='Path to model directory')
     parser.add_argument('--epochs', type=int, default=100, help='Training epochs')
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     
@@ -548,13 +662,22 @@ def main():
         # Training mode
         predictor = YouTubePredictor()
         history = predictor.train(args.train, epochs=args.epochs, batch_size=args.batch_size)
-        predictor.save_model()
         
-        print("\n✅ Training complete! Use --predict to make predictions.")
+        # Only save model if training was successful
+        if history is not None:
+            predictor.save_model(args.model_path)
+            print(f"\n✅ Training complete! Model saved to {args.model_path}")
+            print(f"🚀 Use predictions: python3 main.py --predict --model-path {args.model_path}")
+        else:
+            print("\n❌ Training failed! Please collect more data and try again.")
+            print("\n💡 Quick fix:")
+            print("   python3 captions3.py -t 100 --output-csv ../data/more_data.csv")
+            print("   python clean_data.py")
+            print("   python3 main.py --train ../data/clean_youtube_dataset.csv")
         
     elif args.predict:
         # Prediction mode
-        interactive_prediction()
+        interactive_prediction(args.model_path)
         
     else:
         print("Usage:")

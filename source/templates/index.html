@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntrigueAI - YouTube Performance Predictor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #333 0%, #666 100%);
+            min-height: 100vh;
+            color: #ddd;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: #fff;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 40px;
+        }
+        
+        .card {
+            background: #222;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .card h2 {
+            margin-bottom: 20px;
+            color: #eee;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #bbb;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #444;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s, background 0.3s;
+            background: #333;
+            color: #ddd;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #888;
+            background: #444;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #444 0%, #777 100%);
+            color: #fff;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            background: linear-gradient(135deg, #555 0%, #888 100%);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .result-card {
+            background: linear-gradient(135deg, #333 0%, #555 100%);
+            color: #fff;
+            margin-top: 20px;
+        }
+        
+        .result-card h3 {
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .metric {
+            background: rgba(255,255,255,0.05);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        
+        .metric-label {
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+        
+        .performance-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            font-weight: 600;
+            margin: 10px 0;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        
+        .details {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .error {
+            background: #444;
+            color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border: 1px solid #666;
+        }
+        
+        .examples {
+            margin-top: 20px;
+        }
+        
+        .example-btn {
+            background: #333;
+            border: 1px solid #444;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+            transition: background 0.2s, border-color 0.2s;
+            color: #ddd;
+        }
+        
+        .example-btn:hover {
+            background: #444;
+            border-color: #555;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .spinner {
+            border: 3px solid #444;
+            border-top: 3px solid #888;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .metrics {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 IntrigueAI</h1>
+            <p>Predict YouTube Video Performance with Deep Learning</p>
+        </div>
+        
+        <div class="main-content">
+            <!-- Input Form -->
+            <div class="card">
+                <h2>🎬 Video Details</h2>
+                
+                <form method="post" action="/predict-form" id="predictionForm">
+                    <div class="form-group">
+                        <label for="title">Video Title *</label>
+                        <input type="text" id="title" name="title" required 
+                               value="{{ video.title if video else '' }}" 
+                               placeholder="e.g., How to Build AI in Python">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea id="description" name="description" rows="3" 
+                                  placeholder="Brief description of your video content...">{{ video.description if video else '' }}</textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="transcript_text">Video Script/Transcript (Optional)</label>
+                        <textarea id="transcript_text" name="transcript_text" rows="4" 
+                                  placeholder="Paste your video script or transcript here for better predictions...">{{ video.transcript_text if video else '' }}</textarea>
+                        <small style="color: #999; font-size: 0.85rem;">💡 Including transcript significantly improves prediction accuracy!</small>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="duration_seconds">Duration (seconds)</label>
+                            <input type="number" id="duration_seconds" name="duration_seconds" 
+                                   value="{{ video.duration_seconds if video else 600 }}" min="1" max="86400">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="uploader">Channel Name</label>
+                            <input type="text" id="uploader" name="uploader" 
+                                   value="{{ video.uploader if video else '' }}" 
+                                   placeholder="Your Channel">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="categories">Categories</label>
+                        <input type="text" id="categories" name="categories" 
+                               value="{{ video.categories if video else '' }}" 
+                               placeholder="e.g., Education, Technology">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="tags">Tags</label>
+                        <input type="text" id="tags" name="tags" 
+                               value="{{ video.tags if video else '' }}" 
+                               placeholder="e.g., python, AI, tutorial, programming">
+                    </div>
+                    
+                    <button type="submit" class="btn" id="predictBtn">
+                        🚀 Predict Performance
+                    </button>
+                </form>
+                
+                <!-- Example Videos -->
+                <div class="examples">
+                    <h3>📝 Try These Examples:</h3>
+                    <button type="button" class="example-btn" onclick="loadExample('tech')">
+                        🔧 Tech Tutorial: "How to Build AI Chatbots in Python"
+                    </button>
+                    <button type="button" class="example-btn" onclick="loadExample('tips')">
+                        💡 Quick Tips: "5 Python Tricks Every Developer Should Know"
+                    </button>
+                    <button type="button" class="example-btn" onclick="loadExample('food')">
+                        🍳 Lifestyle: "Making Perfect Pancakes - Secret Recipe!"
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Results -->
+            <div class="card">
+                {% if result %}
+                <div class="result-card">
+                    <h3>🎯 Prediction Results</h3>
+                    
+                    <div class="metrics">
+                        <div class="metric">
+                            <div class="metric-value">{{ "{:,}".format(result.predicted_views) }}</div>
+                            <div class="metric-label">👀 Expected Views</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value">{{ "{:,}".format(result.predicted_likes) }}</div>
+                            <div class="metric-label">👍 Expected Likes</div>
+                        </div>
+                    </div>
+                    
+                    <div class="performance-badge">
+                        {{ result.performance_category }} ({{ result.confidence_score }}% confidence)
+                    </div>
+                    
+                    <div class="details">
+                        <div class="detail-row">
+                            <span>Like Rate:</span>
+                            <span>{{ result.like_rate }}%</span>
+                        </div>
+                        <div class="detail-row">
+                            <span>Duration:</span>
+                            <span>{{ result.duration_minutes }} minutes</span>
+                        </div>
+                        <div class="detail-row">
+                            <span>Est. Comments:</span>
+                            <span>{{ "{:,}".format(result.estimated_comments) }}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span>Est. Shares:</span>
+                            <span>{{ "{:,}".format(result.estimated_shares) }}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span>Predicted:</span>
+                            <span>{{ result.prediction_time }}</span>
+                        </div>
+                    </div>
+                </div>
+                {% elif error %}
+                <div class="error">
+                    <h3>❌ Error</h3>
+                    <p>{{ error }}</p>
+                </div>
+                {% else %}
+                <div style="text-align: center; padding: 60px 20px; color: #aaa;">
+                    <div style="font-size: 4rem; margin-bottom: 20px;">🧠</div>
+                    <h3>Ready to Predict</h3>
+                    <p>Enter your video details and click "Predict Performance" to see what our AI thinks!</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function loadExample(type) {
+            const examples = {
+                tech: {
+                    title: "How to Build AI Chatbots in Python - Complete Tutorial",
+                    description: "Learn to create your own AI chatbot using Python and OpenAI. Step-by-step guide perfect for beginners!",
+                    transcript_text: "Welcome everyone to this complete tutorial on building AI chatbots. Today we'll learn how to create your own intelligent chatbot using Python and OpenAI's powerful API. We'll start with the basics, cover installation, API setup, and then build a working chatbot step by step. This tutorial is perfect for beginners, so don't worry if you're new to programming. By the end, you'll have your own functioning AI assistant. Let's get started!",
+                    duration_seconds: 1800,
+                    uploader: "CodeWithAI",
+                    categories: "Education,Technology",
+                    tags: "python,AI,chatbot,tutorial,programming"
+                },
+                tips: {
+                    title: "5 Python Tricks Every Developer Should Know",
+                    description: "Quick Python tips that will make you more productive.",
+                    transcript_text: "What's up developers! Today I'm sharing 5 Python tricks that will make you way more productive. These are hidden features that most people don't know about. First trick: list comprehensions with conditions. Second: using enumerate instead of range. Third: the amazing zip function. Fourth: dictionary comprehensions. And fifth: the power of lambda functions. Each of these will save you tons of time. Let's dive in!",
+                    duration_seconds: 480,
+                    uploader: "DevTips",
+                    categories: "Education,Technology",
+                    tags: "python,programming,tips,coding"
+                },
+                food: {
+                    title: "Making Perfect Pancakes - Secret Recipe!",
+                    description: "The ultimate pancake recipe that will change your breakfast game forever.",
+                    transcript_text: "Good morning everyone! Today I'm sharing my secret pancake recipe that will absolutely change your breakfast game. These pancakes are incredibly fluffy, perfectly sweet, and so easy to make. The secret ingredient? A touch of vanilla and the perfect ratio of ingredients. We'll start with the dry ingredients, then the wet, and I'll show you the mixing technique that makes all the difference. Trust me, your family will be asking for these every weekend!",
+                    duration_seconds: 600,
+                    uploader: "FoodMaster",
+                    categories: "Food,Lifestyle",
+                    tags: "pancakes,recipe,cooking,breakfast"
+                }
+            };
+            
+            const example = examples[type];
+            if (example) {
+                document.getElementById('title').value = example.title;
+                document.getElementById('description').value = example.description;
+                document.getElementById('transcript_text').value = example.transcript_text;
+                document.getElementById('duration_seconds').value = example.duration_seconds;
+                document.getElementById('uploader').value = example.uploader;
+                document.getElementById('categories').value = example.categories;
+                document.getElementById('tags').value = example.tags;
+            }
+        }
+        
+        // Add loading state to form submission
+        document.getElementById('predictionForm').addEventListener('submit', function() {
+            const btn = document.getElementById('predictBtn');
+            btn.innerHTML = '<div class="spinner"></div>Making Prediction...';
+            btn.disabled = true;
+        });
+    </script>
+</body>
+</html>
